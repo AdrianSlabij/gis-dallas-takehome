@@ -33,15 +33,15 @@ app.add_middleware(
 )
 
 
-
 @app.get("/parcels")
 async def get_parcels(
     user_role: str = Query("guest", description="Role: 'guest' or 'registered'"), 
-    limit: int = 100,
+    limit: int = 600, #response size for registered users
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     min_sqft: Optional[float] = None,
-    max_sqft: Optional[float] = None
+    max_sqft: Optional[float] = None,
+    county: Optional[str] = None
 ):
     """
     Fetches parcel data with dynamic filtering
@@ -58,16 +58,22 @@ async def get_parcels(
             county, 
             sqft, 
             total_value, 
-            public.ST_AsGeoJSON(geom) as geometry 
+            public.ST_AsGeoJSON(geom) as geometry
         FROM takehome.dallas_parcels
         WHERE 1=1
     """
     
     params = []
     
-    # guest users are restricted to Dallas county records by default.
+    # guest users are restricted to Dallas county records by default
     if user_role == "guest":
         query += " AND county = 'dallas'"
+        limit = 200 # force results to 200 for guests
+
+    # specific county filter
+    if county and county.lower() != "all":
+        params.append(county.lower()) 
+        query += f" AND LOWER(county) = ${len(params)}"
 
     # price filters
     if min_price is not None:
@@ -77,16 +83,16 @@ async def get_parcels(
     if max_price is not None:
         params.append(max_price)
         query += f" AND total_value <= ${len(params)}"
-
-    # SqFt filters
+    
+    # sqft filters
     if min_sqft is not None:
         params.append(min_sqft)
         query += f" AND sqft >= ${len(params)}"
-
+        
     if max_sqft is not None:
         params.append(max_sqft)
         query += f" AND sqft <= ${len(params)}"
-    
+
     # apply limit
     params.append(limit)
     query += f" LIMIT ${len(params)}"
@@ -94,17 +100,16 @@ async def get_parcels(
     async with pool.acquire() as connection:
         rows = await connection.fetch(query, *params)
         
-    results = []
-    for row in rows:
-        #Map database records to a clean API response model
-        # to do: use pydantic models for response validation
-        results.append({
+    results = [
+        {
             "id": str(row["sl_uuid"]),
             "address": row["address"],
             "county": row["county"],
             "sqft": row["sqft"],
             "price": row["total_value"],
             "geometry": row["geometry"] 
-        })
+        }
+        for row in rows
+    ]
 
     return {"count": len(results), "data": results}
