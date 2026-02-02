@@ -25,22 +25,38 @@ interface Parcel {
 const MapBoard = () => {
   const [parcels, setParcels] = useState<any>(null); // Holds the GeoJSON FeatureCollection for Mapbox rendering
   const [popupInfo, setPopupInfo] = useState<any>(null); // tracks the active map tooltip state
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   //filter state synchronized with the Sidebar component
   const [filters, setFilters] = useState({
     min_price: null,
     max_price: null,
     min_sqft: null,
+    max_sqft: null,
+    county: null,
   });
 
   // Re-fetches parcel data whenever filters change
   useEffect(() => {
+    // create a cancel token (Controller) to fix Race Conditions
+    const controller = new AbortController(); // cancel ongoing, outdated HTTP requests when the filters change before the previous request finishes
+
     const fetchData = async () => {
+      setIsLoading(true);
       try {
-        const response = await axios.get("http://localhost:8000/parcels", {
-          // to do: user_role should come from AuthContext
-          params: { user_role: "guest", ...filters },
+        const apiUrl =
+          import.meta.env.BACKEND_API_URL || "http://localhost:8000";
+
+        const response = await axios.get(`${apiUrl}/parcels`, {
+          params: {
+            // set user role based on login status
+            user_role: isLoggedIn ? "registered" : "guest",
+            ...filters,
+          },
+          signal: controller.signal, // attach the signal to axios request
         });
+
         // convert DB records to GeoJSON features
         const features = response.data.data.map((item: Parcel) => ({
           type: "Feature",
@@ -55,12 +71,27 @@ const MapBoard = () => {
         }));
 
         setParcels({ type: "FeatureCollection", features: features });
-      } catch (error) {
-        console.error("Error fetching parcels:", error);
+      } catch (error: any) {
+        //ignore errors caused by cancellation
+        if (axios.isCancel(error)) {
+          console.log("Request canceled:", error.message);
+        } else {
+          console.error("Error fetching parcels:", error);
+        }
+      } finally {
+        //only stop loading if the request wasn't cancelled
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     };
     fetchData();
-  }, [filters]);
+
+    //cancels the previous request when filters change
+    return () => {
+      controller.abort();
+    };
+  }, [filters, isLoggedIn]);
 
   // client side CSV export to download filtered datasets
   const handleExportCSV = () => {
@@ -119,7 +150,14 @@ const MapBoard = () => {
         }
       `}</style>
 
-      <Sidebar onFilterChange={setFilters} onExport={handleExportCSV} />
+      <Sidebar
+        onFilterChange={setFilters}
+        onExport={handleExportCSV}
+        onLoginToggle={setIsLoggedIn}
+        isLoggedIn={isLoggedIn}
+        resultCount={parcels?.features?.length || 0}
+        isSearching={isLoading}
+      />
 
       <Map
         initialViewState={{
