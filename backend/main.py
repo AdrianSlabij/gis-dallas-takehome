@@ -41,12 +41,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 #CORS Configuration
-# To do: Move origins to environment variables for production deployments.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # adjust this in production
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"], # can tighten this to "get" later
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
