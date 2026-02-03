@@ -1,11 +1,29 @@
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+import requests
 from typing import Optional
+from typing_extensions import Annotated
+from fastapi import FastAPI, Depends, Header, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from jose import jwt, JWTError
+from contextlib import asynccontextmanager
 from db import get_db_pool
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+AWS_REGION = os.environ.get("AWS_REGION")
+USER_POOL_ID = os.environ.get("USER_POOL_ID")
+CLIENT_ID = os.environ.get("CLIENT_ID")
+
+if not AWS_REGION or not USER_POOL_ID or not CLIENT_ID:
+    raise ValueError("Missing AWS Configuration. Check .env file.")
 
 # holds the db connection pool, managed via lifespan
 pool = None
+
+# URL to get AWS's public signing keys
+JWKS_URL = f"https://cognito-idp.{AWS_REGION}.amazonaws.com/{USER_POOL_ID}/.well-known/jwks.json"
+jwks_keys = requests.get(JWKS_URL).json()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,10 +50,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+async def get_current_user_role(authorization: Optional[str] = Header(None)):
+    """
+    Determines user permissions based on Cognito JWT.
+    ensure map availability even if auth is bypassed or expired.
+    guest: limited access to Dallas county parcels only.
+    registered: full access with more counties and higher limits.
+    """
+    if not authorization:
+        print("DEBUG: No Authorization header found.")
+        return "guest"
+
+    try:
+        # 'Bearer <token>' format.
+        token = authorization.split(" ")[1]
+        
+        # print(f"DEBUG: Token received: {token[:10]}...")
+        
+        claims = jwt.decode(
+            token, 
+            jwks_keys, 
+            algorithms=["RS256"], 
+            audience=CLIENT_ID,
+            options={"verify_at_hash": False}
+        )
+        
+        print("DEBUG: Token verified successfully! Role is Registered.")
+        return "registered"
+            
+    except Exception as e:
+        # fall back to guest role to maintain public view access
+        print(f"DEBUG: Verification Failed. Error: {str(e)}")
+        return "guest"
+
 
 @app.get("/parcels")
 async def get_parcels(
-    user_role: str = Query("guest", description="Role: 'guest' or 'registered'"), 
+    user_role: str = Depends(get_current_user_role), 
     limit: int = 600, #response size for registered users
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
