@@ -8,19 +8,7 @@ import Map, {
 import axios from "axios";
 import "mapbox-gl/dist/mapbox-gl.css";
 import Sidebar from "./Sidebar";
-
-/**
- * Interface representing the raw data structure from the API
- * used for type-safe mapping to GeoJSON features.
- */
-interface Parcel {
-  id: string;
-  address: string;
-  county: string;
-  sqft: number | null;
-  price: number;
-  geometry: string; // received as a stringified GeoJSON from Postgres
-}
+import { fetchParcels, type Parcel, type ParcelFilters } from "../api/parcels";
 
 const MapBoard = () => {
   const [parcels, setParcels] = useState<any>(null); // Holds the GeoJSON FeatureCollection for Mapbox rendering
@@ -28,37 +16,43 @@ const MapBoard = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  //filter state synchronized with the Sidebar component
-  const [filters, setFilters] = useState({
-    min_price: null,
-    max_price: null,
-    min_sqft: null,
-    max_sqft: null,
-    county: null,
+  // filter state synchronized with the Sidebar component
+  const [filters, setFilters] = useState<ParcelFilters>(() => {
+    const saved = localStorage.getItem("parcel_filters");
+    return saved
+      ? JSON.parse(saved)
+      : {
+          min_price: null,
+          max_price: null,
+          min_sqft: null,
+          max_sqft: null,
+          county: null,
+        };
   });
+
+  // Save filters to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem("parcel_filters", JSON.stringify(filters));
+  }, [filters]);
 
   // Re-fetches parcel data whenever filters change
   useEffect(() => {
-    // create a cancel token (Controller) to fix Race Conditions
+    // create a cancel Controller to fix Race Conditions
     const controller = new AbortController(); // cancel ongoing, outdated HTTP requests when the filters change before the previous request finishes
 
-    const fetchData = async () => {
+    const loadData = async () => {
       setIsLoading(true);
       try {
-        const apiUrl =
-          import.meta.env.BACKEND_API_URL || "http://localhost:8000";
+        const { data, isLoggedIn: authStatus } = await fetchParcels(
+          filters,
+          controller.signal,
+        );
 
-        const response = await axios.get(`${apiUrl}/parcels`, {
-          params: {
-            // set user role based on login status
-            user_role: isLoggedIn ? "registered" : "guest",
-            ...filters,
-          },
-          signal: controller.signal, // attach the signal to axios request
-        });
+        // sync login state based on token existence from the service response
+        setIsLoggedIn(authStatus);
 
         // convert DB records to GeoJSON features
-        const features = response.data.data.map((item: Parcel) => ({
+        const features = data.map((item: Parcel) => ({
           type: "Feature",
           geometry: JSON.parse(item.geometry),
           properties: {
@@ -85,13 +79,14 @@ const MapBoard = () => {
         }
       }
     };
-    fetchData();
+
+    loadData();
 
     //cancels the previous request when filters change
     return () => {
       controller.abort();
     };
-  }, [filters, isLoggedIn]);
+  }, [filters]);
 
   // client side CSV export to download filtered datasets
   const handleExportCSV = () => {
@@ -163,7 +158,7 @@ const MapBoard = () => {
         initialViewState={{
           longitude: -96.797,
           latitude: 32.7767,
-          zoom: 15,
+          zoom: 11,
         }}
         style={{ width: "100%", height: "100%" }}
         mapStyle="mapbox://styles/mapbox/streets-v11"
