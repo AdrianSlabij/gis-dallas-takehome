@@ -7,7 +7,12 @@ A full-stack geospatial application that allows users to explore real estate par
 * **Frontend (Vercel):** [https://gis-dallas-takehome-frontend.vercel.app](https://gis-dallas-takehome-frontend.vercel.app/)
 * **Backend (Render):** [https://gis-dallas-takehome-backend.onrender.com/docs](https://gis-dallas-takehome-backend.onrender.com/docs#/)
 
----
+## Tech Stack
+
+* **Frontend:** React (Vite), TypeScript, Mapbox
+* **Backend:** Python FastAPI, Docker
+* **Database:** PostgreSQL with PostGIS
+* **Auth:** AWS Cognito (JWT Verification)
 
 ## Features Implemented
 
@@ -19,9 +24,3 @@ A full-stack geospatial application that allows users to explore real estate par
 * **Persistence:** Filters (Price, SqFt) are saved automatically so users don't lose their settings.
 * **Data Export:** Filtered results can be exported to CSV.
 
-## Tech Stack
-
-* **Frontend:** React (Vite), TypeScript, Mapbox
-* **Backend:** Python FastAPI, Docker
-* **Database:** PostgreSQL with PostGIS
-* **Auth:** AWS Cognito (JWT Verification)
