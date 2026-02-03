@@ -44,7 +44,7 @@ app = FastAPI(lifespan=lifespan)
 # To do: Move origins to environment variables for production deployments.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], 
+    allow_origins=["*"], # adjust this in production
     allow_credentials=True,
     allow_methods=["*"], # can tighten this to "get" later
     allow_headers=["*"],
