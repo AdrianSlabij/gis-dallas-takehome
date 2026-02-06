@@ -1,7 +1,7 @@
 import axios from "axios";
 import { fetchAuthSession } from "aws-amplify/auth";
 
-const API_URL = import.meta.env.BACKEND_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:8000";
 
 /**
  * Interface representing the raw data structure from the API
